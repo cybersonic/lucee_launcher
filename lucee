@@ -1,0 +1,212 @@
+#!/bin/bash
+
+# Default values
+default_image="lucee/lucee"
+default_tag="5.4.7.1-SNAPSHOT"
+default_port="3000"
+volumes=()
+
+# Function to display usage
+usage() {
+  echo "
+📘 Usage: $0 [options]
+"
+  echo "Options:"
+  echo "  📦  -i, --image IMAGE      Set the Docker image (default: $default_image)"
+  echo "  🏷️   -t, --tag TAG          Set the Docker image tag (default: $default_tag)"
+  echo "  🚪  -p, --port PORT        Set the host port (default: $default_port)"
+  echo "  📂  -v, --volume, -V PATTERN   Add volume pattern (repeatable)"
+  echo "                            The volume pattern should be in the format [host_path]:[container_path]."
+  echo "                            Example: -v /path/on/host:/path/in/container"
+  echo "  🌱  -e, --env KEY=VALUE    Set environment variable (repeatable)
+                            Example: -e MY_VAR=my_value"
+  echo "  🔄  -d, --detach           Run the container in detached mode"
+  echo "  📜  logs                   Show logs of the currently running container"
+  echo "  ❌  stop                   Stop the currently running container"
+  echo "  📝  list                   List available image tags on Docker Hub"
+  echo "  🔍  dry-run                Show what command would be executed without running it"
+  echo "
+"
+  exit 1
+}
+
+# Parse arguments
+detach=false
+show_logs=false
+stop_container=false
+list_tags=false
+dry_run=false
+
+while [[ "$#" -gt 0 ]]; do
+  case $1 in
+    -e|--env)
+      env_vars+=("$2")
+      shift 2
+      ;;
+    -i|--image)
+      image="$2"
+      shift 2
+      ;;
+    -t|--tag)
+      tag="$2"
+      shift 2
+      ;;
+    -p|--port)
+      port="$2"
+      shift 2
+      ;;
+    -v|--volume|-V)
+      volumes+=("$2")
+      shift 2
+      ;;
+    list)
+      list_tags=true
+      shift 1
+      ;;
+    stop)
+      stop_container=true
+      shift 1
+      ;;
+    logs)
+      show_logs=true
+      shift 1
+      ;;
+    -d|--detach)
+      detach=true
+      shift 1
+      ;;
+    dry-run)
+      dry_run=true
+      shift 1
+      ;;
+    *)
+      usage
+      ;;
+  esac
+done
+
+# Set defaults if not provided
+current_path=$(pwd)
+image=${image:-$default_image}
+tag=${tag:-$default_tag}
+port=${port:-$default_port}
+container_name=$(basename "$current_path")
+
+# Function to list available tags from Docker Hub
+list_available_tags() {
+  echo "Fetching available tags for image: $default_image..."
+  local page=1
+  while true; do
+    response=$(curl -s "https://registry.hub.docker.com/v2/repositories/${default_image}/tags?page_size=100&page=${page}")
+    if [[ $? -ne 0 || -z "$response" ]]; then
+      echo "Error: Unable to fetch tags from Docker Hub. Please check your internet connection or the image name."
+      exit 1
+    fi
+
+    tags=$(echo "$response" | jq -r '.results[].name')
+    if [[ -z "$tags" ]]; then
+      echo "No more tags available."
+      break
+    fi
+
+    echo "$tags"
+    ((page++))
+    read -p "Press [Enter] to see more tags or type 'q' to quit: " input
+    if [[ "$input" == "q" ]]; then
+      break
+    fi
+  done
+}
+
+# If list command is provided, list the tags and exit
+if [[ $list_tags == true ]]; then
+  if ! command -v jq &> /dev/null; then
+    echo "jq is required for parsing JSON. Please install jq."
+    exit 1
+  fi
+  list_available_tags
+  exit 0
+fi
+
+# If logs command is provided, show logs of the running container and exit
+if [[ $show_logs == true ]]; then
+  if docker ps --filter "name=^/${container_name}$" --format '{{.Names}}' | grep -q "${container_name}"; then
+    docker logs -f "$container_name"
+  else
+    echo "No container with the name '${container_name}' is currently running."
+  fi
+  exit 0
+fi
+
+# If stop command is provided, stop the running container and exit
+if [[ $stop_container == true ]]; then
+  if docker ps --filter "name=^/${container_name}$" --format '{{.Names}}' | grep -q "${container_name}"; then
+    docker stop "$container_name"
+    echo "Container '${container_name}' has been stopped."
+  else
+    echo "No container with the name '${container_name}' is currently running."
+  fi
+  exit 0
+fi
+
+# Warn if a container with the same name is already running
+if docker ps --filter "name=^/${container_name}$" --format '{{.Names}}' | grep -q "${container_name}"; then
+  echo "Warning: A container with the name '${container_name}' is already running. Please stop it before starting a new one."
+  exit 1
+fi
+
+# Default action is to run the Docker container
+volume_args=""
+env_args=""
+for env_var in "${env_vars[@]}"; do
+  env_args+="-e ${env_var} "
+done
+for vol in "${volumes[@]}"; do
+  volume_args+="-v ${vol} "
+done
+
+find_available_port() {
+  local base_port=$1
+  local port=$base_port
+  while ss -tuln | grep -q ":$port"; do
+    ((port++))
+    if (( port > base_port + 100 )); then
+      echo "Error: Could not find an available port within 100 attempts." >&2
+      exit 1
+    fi
+  done
+  echo $port
+}
+
+# Find an available port if the default is taken
+port=$(find_available_port $port)
+
+# Show settings before launching the container
+cat <<EOM
+🚀 Launching Docker Container with the following settings:
+
+📦 Container Name: $container_name
+📦 Image: $image
+🏷️  Tag: $tag
+🚪 Port: $port
+📂 Volumes:
+  📂 $current_path:/app
+$(for vol in "${volumes[@]}"; do echo "  📂 $vol"; done)
+🌱 Environment Variables:
+$(for env_var in "${env_vars[@]}"; do echo "  🌱 $env_var"; done)
+
+EOM
+
+# Run the Docker container
+detach_flag=""
+if [[ $detach == true ]]; then
+  detach_flag="-d"
+fi
+
+if [[ $dry_run == true ]]; then
+  echo "Dry run mode enabled. The following command would be executed:"
+  echo "docker run --rm $detach_flag --name "$container_name" -v "$current_path":/app -p "$port":8080 $volume_args $env_args "$image":"$tag""
+  exit 0
+fi
+
+docker run --rm $detach_flag --name "$container_name" -v "$current_path":/app -p "$port":8080 $volume_args $env_args "$image":"$tag"
