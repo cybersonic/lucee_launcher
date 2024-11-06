@@ -12,6 +12,9 @@ This script is a standard bash script that was written to run on macOS. It shoul
 - Automatically find available ports if the default is taken.
 - Supports listing tags from Docker Hub, running containers in detached mode, stopping running containers, and viewing logs.
 - Includes a dry-run mode to preview the Docker command before executing it.
+## Dependencies
+The script is designed to go on macOS primarily but I am sure it works in *nix environments. 
+It also requires Docker to be installed and running
 
 ## Installation
 The easiest way to install the script is to add the `lucee` file it to your local `~/bin` folder. You will then be able to call it from the command line wherever you need it. 
@@ -21,7 +24,7 @@ The easiest way to install the script is to add the `lucee` file it to your loca
 The script can be executed with the following command:
 
 ```sh
-./lucee [options] [action]
+lucee [options] [action]
 ```
 
 ### Options
@@ -41,22 +44,22 @@ The script can be executed with the following command:
 ### Examples
 #### Run Container with a custom lucee version (tag)
 ```sh
-./lucee  -t 6.2.0.137-SNAPSHOT -p 3000
+lucee  -t 6.2.0.137-SNAPSHOT -p 3000
 ```
 
 #### Attach a Volume and Set Environment Variable
 ```sh
-./lucee -v /host/path:/container/path -e ENV_VAR=value
+lucee -v /host/path:/container/path -e ENV_VAR=value
 ```
 
 #### Run in Detached Mode
 ```sh
-./lucee --detach
+lucee --detach
 ```
 
 #### List Available Tags for Default Image
 ```sh
-./lucee list
+lucee list
 ```
 
 ### Notes
@@ -75,19 +78,19 @@ The script can be executed with the following command:
 #### Viewing Logs
 To view logs of a currently running container:
 ```sh
-./lucee logs
+lucee logs
 ```
 
 #### Stopping a Running Container
 To stop the running container associated with the current directory:
 ```sh
-./lucee stop
+lucee stop
 ```
 
 ### Dry Run Mode
 If you'd like to preview the Docker command before actually running it, use the `dry-run` option:
 ```sh
-./lucee dry-run
+lucee dry-run
 ```
 
 ## License

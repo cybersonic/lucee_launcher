@@ -168,7 +168,7 @@ done
 find_available_port() {
   local base_port=$1
   local port=$base_port
-  while ss -tuln | grep -q ":$port"; do
+  while netstat -an | grep -q "\.$port "; do
     ((port++))
     if (( port > base_port + 100 )); then
       echo "Error: Could not find an available port within 100 attempts." >&2
